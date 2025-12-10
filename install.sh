@@ -3,7 +3,7 @@ set -euo pipefail
 
 #############################################
 # CONFIGURE THIS
-GITHUB_USER="YOUR_GITHUB_USERNAME"
+GITHUB_USER="cgorto"
 #############################################
 
 CONTAINER_NAME="dev"
