@@ -110,7 +110,6 @@ distrobox create \
     --name "${CONTAINER_NAME}" \
     --home "${DEV_ROOT}/home" \
     --volume "${DEV_ROOT}/projects:${DEV_ROOT}/projects:Z" \
-    --init \
     --image localhost/gamedev:latest
 
 echo ""
