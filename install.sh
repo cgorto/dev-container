@@ -73,29 +73,53 @@ comment-token = "//"
 indent = { tab-width = 4, unit = "    " }
 EOF
 
+# Create .distroboxrc to set zsh as the shell (distrobox mirrors host shell by default)
+echo "==> Configuring distrobox to use zsh..."
+cat > "${DEV_ROOT}/home/.distroboxrc" << 'EOF'
+SHELL=/usr/bin/zsh
+EOF
+
 # Create first-run init script for rustup and oh-my-zsh
 echo "==> Creating first-run init script..."
-cat > "${DEV_ROOT}/home/.devenv-init.sh" << 'INITEOF'
+cat > "${DEV_ROOT}/home/.first-run-setup.sh" << 'INITEOF'
 #!/bin/bash
 set -euo pipefail
 
+MARKER_FILE="$HOME/.devenv-initialized"
+
+# Skip if already initialized
+if [[ -f "$MARKER_FILE" ]]; then
+    return 0 2>/dev/null || exit 0
+fi
+
 echo "==> First run setup..."
 
-# Install oh-my-zsh
+# Install oh-my-zsh (this will create a new .zshrc)
 if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
     echo "Installing oh-my-zsh..."
     sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
 fi
 
+# Append our customizations to the oh-my-zsh .zshrc
+echo "Configuring zsh..."
+cat >> "$HOME/.zshrc" << 'ZSHCUSTOM'
+
+# === Custom additions ===
+
+# Cargo environment
+[[ -f "$HOME/.cargo/env" ]] && source "$HOME/.cargo/env"
+
+# Helix alias
+alias hx='helix'
+
+# NVIDIA Vulkan ICD for distrobox (host passthrough)
+export VK_ICD_FILENAMES=/run/host/usr/share/vulkan/icd.d/nvidia_icd.x86_64.json
+ZSHCUSTOM
+
 # Install rustup
 if ! command -v rustup &> /dev/null; then
     echo "Installing rustup..."
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
-
-    # Add to .zshrc if not already there
-    if ! grep -q 'cargo/env' "$HOME/.zshrc" 2>/dev/null; then
-        echo 'source "$HOME/.cargo/env"' >> "$HOME/.zshrc"
-    fi
 
     # Source for current session
     source "$HOME/.cargo/env"
@@ -104,27 +128,43 @@ if ! command -v rustup &> /dev/null; then
     rustup component add rust-src rust-analyzer clippy rustfmt
 fi
 
+# Mark as initialized
+touch "$MARKER_FILE"
+
 echo "==> First run setup complete!"
 echo ""
-
-# Self-destruct
-rm -f "$HOME/.devenv-init.sh"
-
-# Start zsh
-exec zsh
 INITEOF
-chmod +x "${DEV_ROOT}/home/.devenv-init.sh"
+chmod +x "${DEV_ROOT}/home/.first-run-setup.sh"
 
-# Create .zshrc that triggers init on first run
+# Create initial .zshrc that triggers first-run setup
+# (oh-my-zsh will replace this, but not before our script runs)
 cat > "${DEV_ROOT}/home/.zshrc" << 'ZSHEOF'
-# Run first-time setup if needed
-if [[ -f "$HOME/.devenv-init.sh" ]]; then
-    source "$HOME/.devenv-init.sh"
+# First-time setup (runs once, then oh-my-zsh takes over)
+if [[ -f "$HOME/.first-run-setup.sh" ]] && [[ ! -f "$HOME/.devenv-initialized" ]]; then
+    source "$HOME/.first-run-setup.sh"
+fi
+ZSHEOF
+
+# Also create .bashrc that can trigger setup if user enters via bash
+cat > "${DEV_ROOT}/home/.bashrc" << 'BASHEOF'
+# Default Arch bashrc
+[[ $- != *i* ]] && return
+
+alias ls='ls --color=auto'
+alias grep='grep --color=auto'
+PS1='[\u@\h \W]\$ '
+
+# First-time setup (in case user enters via bash first)
+if [[ -f "$HOME/.first-run-setup.sh" ]] && [[ ! -f "$HOME/.devenv-initialized" ]]; then
+    echo "Running first-time setup..."
+    bash "$HOME/.first-run-setup.sh"
+    echo "Setup complete. Launching zsh..."
+    exec zsh
 fi
 
-# Source cargo env if it exists
+# Source cargo if available
 [[ -f "$HOME/.cargo/env" ]] && source "$HOME/.cargo/env"
-ZSHEOF
+BASHEOF
 
 # Pull the image
 echo "==> Pulling container image..."
