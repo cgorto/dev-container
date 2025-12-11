@@ -137,6 +137,7 @@ distrobox create \
     --home "${DEV_ROOT}/home" \
     --volume "${DEV_ROOT}/projects:${DEV_ROOT}/projects:Z" \
     --init \
+    --nvidia \
     --image "${IMAGE}"
 
 echo ""
